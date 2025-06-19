@@ -1,52 +1,55 @@
-"use client"; // On a besoin de state pour gérer l'ouverture du modal
+// app/(dashboard)/dashboard/page.tsx
+import { redirect } from 'next/navigation'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
+import DashboardClient from '@/components/dashboard/dashboard-client'
 
-import { useState } from "react";
-import { Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import DemosTable from "@/components/dashboard/demos-table";
-import EmptyState from "@/components/dashboard/empty-state";
-import NewDemoModal from "@/components/dashboard/new-demo-modal";
+// Type de données attendues par le client
+export type Demo = {
+    id: string
+    name: string
+    views: number
+    updatedAt: string
+}
 
-// MOCK DATA: Remplacez ceci par votre appel à Supabase
-const userDemos = [
-    { id: 'demo-1', name: "Onboarding v2", views: 1256, updatedAt: "2025-06-17T14:20:00Z" },
-    { id: 'demo-2', name: "Feature Showcase: AI Assistant", views: 842, updatedAt: "2025-06-15T09:30:00Z" },
-    { id: 'demo-3', name: "Sales Pitch - Enterprise", views: 301, updatedAt: "2025-05-28T18:00:00Z" },
-];
+export default async function DashboardPage({
+    searchParams,
+}: {
+    searchParams: Promise<{ ws?: string }>
+}) {
+    // Attendre la récupération des query params
+    const { ws } = await searchParams
 
-// Pour tester l'état vide, utilisez : const userDemos = [];
+    const supabase = await createSupabaseServerClient()
 
-export default function DashboardPage() {
-    const [isModalOpen, setIsModalOpen] = useState(false);
+    // Récupérer l'utilisateur
+    const {
+        data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return redirect('/login')
 
-    const hasDemos = userDemos && userDemos.length > 0;
+    // Construire la requête de récupération des démos
+    let query = supabase
+        .from('demos')
+        .select('id, name, views, updated_at')
+        .eq('user_id', user.id)
 
-    return (
-        <>
-            <div className="flex items-center justify-between mb-8">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-                        Your Demos
-                    </h1>
-                    <p className="text-slate-500 mt-1">
-                        Manage, edit, and share your interactive demos.
-                    </p>
-                </div>
-                {/* Le bouton n'est affiché que si le modal n'est pas déjà géré par l'EmptyState */}
-                {hasDemos && (
-                    <Button onClick={() => setIsModalOpen(true)} className="bg-emerald-500 hover:bg-emerald-600">
-                        <Plus className="mr-2 h-4 w-4" /> New Demo
-                    </Button>
-                )}
-            </div>
+    // Filtrer par workspace si ws est présent en query param
+    if (ws) {
+        query = query.eq('workspace_id', ws)
+    }
 
-            {hasDemos ? (
-                <DemosTable demos={userDemos} />
-            ) : (
-                <EmptyState onNewDemoClick={() => setIsModalOpen(true)} />
-            )}
+    // Exécuter la requête
+    const { data: demos, error } = await query.order('updated_at', { ascending: false })
 
-            <NewDemoModal isOpen={isModalOpen} onOpenChange={setIsModalOpen} />
-        </>
-    );
+    if (error) console.error('Error fetching demos:', error)
+
+    // Transformer updated_at → updatedAt
+    const formattedDemos: Demo[] = (demos || []).map(d => ({
+        id: d.id,
+        name: d.name,
+        views: d.views,
+        updatedAt: d.updated_at,
+    }))
+
+    return <DashboardClient initialDemos={formattedDemos} />
 }

@@ -1,3 +1,5 @@
+// app/page.tsx
+
 import HeroSection from "@/components/landing/hero-section"
 import ProblemSolutionSection from "@/components/landing/problem-solution-section"
 import HowItWorksSection from "@/components/landing/how-it-works-section"
